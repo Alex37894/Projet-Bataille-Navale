@@ -1,3 +1,4 @@
+ #!/usr/bin/env python3
 
 import socket
 import sys
@@ -19,7 +20,6 @@ def main():
    server_socket.listen(2)
    print(f"Serveur en attente sur le port {PORT}...")
 
-   clients = []
   
    while len(clients) < 2:
        conn, addr = server_socket.accept()
@@ -27,7 +27,6 @@ def main():
        clients.append(conn)
        conn.send("Bienvenue! En attente de l'adversaire...\n".encode('utf-8'))
 
-   print("Deux joueurs connectés. Le jeu commence !")
   
    clients[0].send("START 0\n".encode('utf-8'))
    clients[1].send("START 1\n".encode('utf-8'))
@@ -35,4 +34,35 @@ def main():
    current_player = 0
    game_over = False
 
-# finir qui joue, Synchroniser les joueurs et Vérifier de la victoire
+   while not game_over:
+       opponent = (current_player + 1) % 2
+      
+       try:
+           clients[current_player].send("YOUR_TURN\n".encode('utf-8'))
+           clients[opponent].send("WAIT\n".encode('utf-8'))
+
+           data = clients[current_player].recv(1024).decode('utf-8').strip()
+           print(f"Joueur {current_player} joue : {data}")
+          
+           if not data: break
+
+           clients[opponent].send(f"{data}\n".encode('utf-8'))
+
+           result_data = clients[opponent].recv(1024).decode('utf-8').strip()
+           print(f"Résultat du Joueur {opponent} : {result_data}")
+
+           clients[current_player].send(f"{result_data}\n".encode('utf-8'))
+
+           if "GAME_OVER" in result_data:
+               game_over = True
+               print(f"Le joueur {current_player} a gagné !")
+
+
+   print("Fermeture du serveur.")
+   for c in clients:
+       c.close()
+
+if __name__ == "__main__":
+   main()
+
+#Ne fonctionne pas a finir

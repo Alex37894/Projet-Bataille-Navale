@@ -1,9 +1,7 @@
- #!/usr/bin/env python3
-
 import socket
 import sys
 
-HOST = ''  # Écoute sur toutes les interfaces
+HOST = '' 
 PORT = 5000
 
 def main():
@@ -12,7 +10,7 @@ def main():
    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
    try:
-       server_socket.bind((HOST, PORT))
+       server_socket.bind(HOST, PORT)
    except socket.error as e:
        print(f"Erreur de liaison : {e}")
        sys.exit(1)
@@ -20,13 +18,15 @@ def main():
    server_socket.listen(2)
    print(f"Serveur en attente sur le port {PORT}...")
 
+   clients = []
   
    while len(clients) < 2:
        conn, addr = server_socket.accept()
        print(f"Connexion reçue de {addr}")
        clients.append(conn)
-       conn.send("Bienvenue! En attente de l'adversaire...\n".encode('utf-8'))
+       conn.send("Bienvenue! En attente de l'adversaire...n".encode('utf-8'))
 
+   print("Deux joueurs connectés. Le jeu commence !")
   
    clients[0].send("START 0\n".encode('utf-8'))
    clients[1].send("START 1\n".encode('utf-8'))
@@ -56,13 +56,17 @@ def main():
            if "GAME_OVER" in result_data:
                game_over = True
                print(f"Le joueur {current_player} a gagné !")
+           else:
+               current_player = opponent
 
+       except Exception as e:
+           print(f"Erreur de connexion : {e}")
+           break
 
    print("Fermeture du serveur.")
    for c in clients:
        c.close()
+   server_socket.close()
 
 if __name__ == "__main__":
    main()
-
-#Ne fonctionne pas a finir

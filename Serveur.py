@@ -10,7 +10,7 @@ def main():
    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
    try:
-       server_socket.bind(HOST, PORT)
+       server_socket.bind((HOST, PORT))
    except socket.error as e:
        print(f"Erreur de liaison : {e}")
        sys.exit(1)
@@ -24,7 +24,7 @@ def main():
        conn, addr = server_socket.accept()
        print(f"Connexion reçue de {addr}")
        clients.append(conn)
-       conn.send("Bienvenue! En attente de l'adversaire...n".encode('utf-8'))
+       conn.send("Bienvenue! En attente de l'adversaire.../n".encode('utf-8'))
 
    print("Deux joueurs connectés. Le jeu commence !")
   
@@ -68,5 +68,5 @@ def main():
        c.close()
    server_socket.close()
 
-if __name__ == "__main__":
+if __name__ == "__main__"
    main()

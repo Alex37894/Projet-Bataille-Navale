@@ -47,8 +47,8 @@ class BattleshipClient:
        print(f"Serveur : {self.host}")
        print(f"{YELLOW}Statut : {status_msg}{RESET}\n")
 
-       header = "   1   2   3 4  5 6  7 8 9 10"                          #Gère l'interface graphique (les numeros)
-       print(f"    MA FLOTTE (Défense)             RADAR (Attaque)")   #gère l'interface graphique
+       header = "   1 2 3 4 5 6 7 8 9 10"                          #Gère l'interface graphique (les numeros)
+       print(f"    MA FLOTTE (Défense)      RADAR (Attaque)")   #gère l'interface graphique
        print(f"{header}    {header}")
 
        rows_label = "ABCDEFGHIJ"
@@ -73,6 +73,21 @@ class BattleshipClient:
 
            print(f"{row_left}       {row_right}")
        print("\n" + "-"*60)
+
+    def parse_coord(self, coord):
+       """Convertit 'A1' en indices (0, 0)."""
+       try:
+           coord = coord.upper().strip()
+           if len(coord) < 2: return None, None
+           row = ord(coord[0]) - ord('A')
+           col = int(coord[1:]) - 1
+           if 0 <= row < 10 and 0 <= col < 10:
+               return row, col
+       except:
+           pass
+       return None, None
+
+   def place_ship(self, start_coord, length, orientation):
 
 #reste a faire : position des bateaux
 

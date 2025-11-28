@@ -153,7 +153,6 @@ class BattleshipClient:
        self.display_boards(last_status)
 
 
-       #Reste a faire la boucle de jeu principale
        # Boucle du jeu principale
        while game_running:
            try:
@@ -236,7 +235,7 @@ class BattleshipClient:
                       
                        self.display_boards(last_status)
 
-           except KeyboardInterrpt:
+           except KeyboardInterrupt:
                break
            except Exception as e:
                print(f"Erreur : {e}")

@@ -154,3 +154,107 @@ class BattleshipClient:
 
 
        #Reste a faire la boucle de jeu principale
+       # Boucle du jeu principale
+       while game_running:
+           try:
+               msg = self.sock.recv(1024).decode('utf-8').strip()
+               if not msg: break
+
+               commands = msg.split('\n')
+               for command in commands:
+                   command = command.strip()
+                   if not command: continue
+
+                   if "Bienvenue" in command:
+                       pass
+                  
+                   elif "START" in command:
+                       last_status = "La partie commence !"
+                       self.display_boards(last_status)
+
+                   elif command == "YOUR_TURN":
+                       last_status = "C'est à VOTRE TOUR !"
+                       self.display_boards(last_status)
+                      
+                       valid = False
+                       while not valid:
+                           shot = input("Coordonnées de tir (ex: B5) : ").strip().upper()
+                           r, c = self.parse_coord(shot)
+                           if r is not None:
+                               if self.tracking_board[r][c] == '?':
+                                   valid = True
+                               else:
+                                   print(f"{YELLOW}Déjà visé !{RESET}")
+                           else:
+                               print(f"{RED}Invalide.{RESET}")
+
+                       self.sock.send(f"{shot}\n".encode('utf-8'))
+                      
+                       res = self.sock.recv(1024).decode('utf-8').strip()
+                      
+                       if "TOUCHE" in res or "GAME_OVER" in res:
+                           self.tracking_board[r][c] = 'X'
+                           last_status = f"Tir en {shot} : {GREEN}TOUCHÉ !{RESET}"
+                       else:
+                           self.tracking_board[r][c] = 'O'
+                           last_status = f"Tir en {shot} : {BLUE}Raté...{RESET}"
+
+                       if "GAME_OVER" in res:
+                           last_status = f"{GREEN}VICTOIRE ! Vous avez gagné !{RESET}"
+                           game_running = False
+                      
+                       self.display_boards(last_status)
+
+                   elif command == "WAIT":
+                       last_status = "L'adversaire vise..."
+                       self.display_boards(last_status)
+                      
+                       opp_shot = self.sock.recv(1024).decode('utf-8').strip()
+                       r, c = self.parse_coord(opp_shot)
+                      
+                       response = "RATE"
+                       if r is not None:
+                           if (r, c) in self.my_ships_points:
+                               self.my_board[r][c] = 'X'
+                               self.my_ships_points.remove((r, c))
+                               if not self.my_ships_points:
+                                   response = "GAME_OVER"
+                               else:
+                                   response = "TOUCHE"
+                           else:
+                               self.my_board[r][c] = 'O'
+                      
+                       self.sock.send(f"{response}\n".encode('utf-8'))
+                      
+                       if response == "GAME_OVER":
+                           last_status = f"{RED}DÉFAITE... Flotte détruite.{RESET}"
+                           game_running = False
+                       elif response == "TOUCHE":
+                           last_status = f"Touché reçu en {opp_shot} !"
+                       else:
+                           last_status = f"L'ennemi a raté en {opp_shot}."
+                      
+                       self.display_boards(last_status)
+
+           except KeyboardInterrpt:
+               break
+           except Exception as e:
+               print(f"Erreur : {e}")
+               break
+      
+       self.sock.close()
+       print("\nFin de partie.")
+
+if __name__ == "__main__":
+   target_host = DEFAULT_HOST     # si rien d'entrée ca prend la DEFAULT_HOST defini au debut
+   
+   if len(sys.argv) > 1: # verifie si une ip a était donnée en argument a l'exécution du script
+       target_host = sys.argv[1]
+   else:     # sinon demande une ip
+       print(f"--- CONFIGURATION CLIENT ---")
+       user_input = input(f"Entrez l'IP du serveur (Entrée pour {DEFAULT_HOST}) : ").strip()
+       if user_input:
+           target_host = user_input
+          
+   client = BattleshipClient(target_host)
+   client.run()

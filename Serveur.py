@@ -15,10 +15,11 @@ def main():
        print(f"Erreur de liaison : {e}")
        sys.exit(1)
 
-   server_socket.listen(2)
+   server_socket.listen(3)
    print(f"Serveur en attente sur le port {PORT}...")
 
    clients = []
+   spectators = []
   
    while len(clients) < 2:
        conn, addr = server_socket.accept()
@@ -30,6 +31,14 @@ def main():
   
    clients[0].send("START 0\n".encode('utf-8'))
    clients[1].send("START 1\n".encode('utf-8'))
+
+   while len(clients) + len(spectators) < 3:
+        conn, addr = server_socket.accept()
+        print(f"Connexion reçue de {addr} (Observateur)")
+        spectators.append(conn)
+        conn.send("Vous êtes un observateur. Vous pouvez suivre le jeu.\n".encode('utf-8'))
+
+    print("Troisième personne connectée en tant qu'observateur.")
 
    current_player = 0
    game_over = False
@@ -52,6 +61,10 @@ def main():
            print(f"Résultat du Joueur {opponent} : {result_data}")
 
            clients[current_player].send(f"{result_data}\n".encode('utf-8'))
+
+           for spectator in spectators:
+               spectator.send(f"Joueur {current_player} joue : {data}\n")
+               spectator.send(f"Résultat : {result_data}\n")
 
            if "GAME_OVER" in result_data:
                game_over = True

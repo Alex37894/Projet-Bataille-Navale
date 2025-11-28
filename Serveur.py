@@ -25,7 +25,7 @@ def main():
        conn, addr = server_socket.accept()
        print(f"Connexion reçue de {addr}")
        clients.append(conn)
-       conn.send("Bienvenue! En attente de l'adversaire.../n".encode('utf-8'))
+       conn.send("Bienvenue! En attente de l'adversaire...\n".encode('utf-8'))
 
    print("Deux joueurs connectés. Le jeu commence !")
   
@@ -38,7 +38,7 @@ def main():
         spectators.append(conn)
         conn.send("Vous êtes un observateur. Vous pouvez suivre le jeu.\n".encode('utf-8'))
 
-    print("Troisième personne connectée en tant qu'observateur.")
+   print("Troisième personne connectée en tant qu'observateur.")
 
    current_player = 0
    game_over = False
@@ -63,8 +63,8 @@ def main():
            clients[current_player].send(f"{result_data}\n".encode('utf-8'))
 
            for spectator in spectators:
-               spectator.send(f"Joueur {current_player} joue : {data}\n")
-               spectator.send(f"Résultat : {result_data}\n")
+               spectator.send(f"Joueur {current_player} joue : {data}\n".encode('utf-8'))
+               spectator.send(f"Résultat : {result_data}\n".encode('utf-8'))
 
            if "GAME_OVER" in result_data:
                game_over = True
@@ -77,7 +77,7 @@ def main():
            break
 
    print("Fermeture du serveur.")
-   for c in clients:
+   for c in clients + spectators:
        c.close()
    server_socket.close()
 

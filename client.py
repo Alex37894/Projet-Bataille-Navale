@@ -51,21 +51,30 @@ class BattleshipClient:
        print(f"{header}    {header}")
       
        rows_label = "ABCDEFGHIJ"
+      
        for i in range(10): # Construction ligne Ma flotte
            row_left = f"{rows_label[i]} "
            for cell in self.my_board[i]:
-               if cell == 'B': char = f"{GREEN}#{RESET}"
-               elif cell == 'X': char = f"{RED}X{RESET}"
-               elif cell == 'O': char = f"{BLUE}O{RESET}"
-               else: char = f"{BLUE}~{RESET}"
+               if cell == 'B': 
+                  char = f"{GREEN}#{RESET}"
+               elif cell == 'X': 
+                  char = f"{RED}X{RESET}"
+               elif cell == 'O': 
+                  char = f"{BLUE}O{RESET}"
+               else: 
+                  char = f"{BLUE}~{RESET}"
                row_left += f" {char}"
           
            row_right = f"{rows_label[i]} "   # Construction ligne Radar
-           for cell in self.tracking_board[i]:te
-               if cell == 'X': char = f"{RED}X{RESET}"
-               elif cell == 'O': char = f"{BLUE}O{RESET}"
-               elif cell == '?': char = "."
-               else: char = " "
+           for cell in self.tracking_board[i]:
+               if cell == 'X': 
+                  char = f"{RED}X{RESET}"
+               elif cell == 'O': 
+                  char = f"{BLUE}O{RESET}"
+               elif cell == '?': 
+                  char = "."
+               else: 
+                  char = " "
                row_right += f" {char}"
           
            print(f"{row_left}       {row_right}")
@@ -257,3 +266,7 @@ if __name__ == "__main__":
           
    client = BattleshipClient(target_host)
    client.run()
+
+
+
+

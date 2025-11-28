@@ -46,7 +46,7 @@ class BattleshipClient:
        print(f"Serveur : {self.host}")
        print(f"{YELLOW}Statut : {status_msg}{RESET}\n")
       
-       header = "   1   2   3 4  5 6  7 8 9 10"                          #Gère l'interface graphique (les numeros)
+       header = "1 2 3 4 5 6 7 8 9 10"                          #Gère l'interface graphique (les numeros)
        print(f"    MA FLOTTE (Défense)             RADAR (Attaque)")   #gère l'interface graphique
        print(f"{header}    {header}")
       

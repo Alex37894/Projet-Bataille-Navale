@@ -43,7 +43,7 @@ class BattleshipClient:
 
   def clear_screen(self):
       """Efface le terminal."""
-      os.system('cls' if os.name == 'nt' else 'clear')
+      os.system('clear')
 
 
   def display_boards(self, status_msg=""):

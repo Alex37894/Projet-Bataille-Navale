@@ -19,6 +19,7 @@ class BattleshipClient:
    def __init__(self, host):
        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
        self.host = host
+       self.is_spectator = False
       
        
        self.my_board = [['~' for _ in range(10)] for _ in range(10)] # Initialisation des grilles (10x10)
@@ -46,26 +47,35 @@ class BattleshipClient:
        print(f"Serveur : {self.host}")
        print(f"{YELLOW}Statut : {status_msg}{RESET}\n")
       
-       header = "   1   2   3 4  5 6  7 8 9 10"                          #Gère l'interface graphique (les numeros)
-       print(f"    MA FLOTTE (Défense)             RADAR (Attaque)")   #gère l'interface graphique
+       header = "   1 2 3 4 5 6 7 8 9 10"                          #Gère l'interface graphique (les numeros)
+       print(f"   MA FLOTTE (Défense)           RADAR (Attaque)")   #gère l'interface graphique
        print(f"{header}    {header}")
       
        rows_label = "ABCDEFGHIJ"
+      
        for i in range(10): # Construction ligne Ma flotte
            row_left = f"{rows_label[i]} "
            for cell in self.my_board[i]:
-               if cell == 'B': char = f"{GREEN}#{RESET}"
-               elif cell == 'X': char = f"{RED}X{RESET}"
-               elif cell == 'O': char = f"{BLUE}O{RESET}"
-               else: char = f"{BLUE}~{RESET}"
+               if cell == 'B': 
+                  char = f"{GREEN}#{RESET}"
+               elif cell == 'X': 
+                  char = f"{RED}X{RESET}"
+               elif cell == 'O': 
+                  char = f"{BLUE}O{RESET}"
+               else: 
+                  char = f"{BLUE}~{RESET}"
                row_left += f" {char}"
           
            row_right = f"{rows_label[i]} "   # Construction ligne Radar
-           for cell in self.tracking_board[i]:te
-               if cell == 'X': char = f"{RED}X{RESET}"
-               elif cell == 'O': char = f"{BLUE}O{RESET}"
-               elif cell == '?': char = "."
-               else: char = " "
+           for cell in self.tracking_board[i]:
+               if cell == 'X': 
+                  char = f"{RED}X{RESET}"
+               elif cell == 'O': 
+                  char = f"{BLUE}O{RESET}"
+               elif cell == '?': 
+                  char = "."
+               else: 
+                  char = " "
                row_right += f" {char}"
           
            print(f"{row_left}       {row_right}")
@@ -138,32 +148,86 @@ class BattleshipClient:
       
        self.display_boards("Flotte prête ! Tentative de connexion...")
 
+       try:
+          self.sock.send("PLACEMENT_OK\n".encode('utf-8'))
+       except:
+           print(f"{RED}Impossible d’envoyer le statut de placement au serveur.{RESET}")
+
+
    def run(self):       # debut de parti placement des bateaux
-       self.setup_phase()
 
        try: # gére la connexion au serveur avec l'adresse IP (variable : {self.host}) et le port (Variable :  {PORT})
            self.sock.connect((self.host, PORT))
+           last_status = "Connexion réussie au serveur !"
+           self.display_boards(last_status)
        except socket.error as e:
            print(f"\n{RED}ERREUR CRITIQUE : Impossible de joindre {self.host}:{PORT}{RESET}")
            print(f"Détail : {e}")
            sys.exit(1)
 
+       welcome = self.sock.recv(1024).decode("utf-8").strip()
+
+       if "observateur" in welcome.lower():
+           self.is_spectator = True
+           print("Connecté en tant qu'observateur.")
+       else:
+           self.is_spectator = False
+           self.display_boards("Connecté. Placez vos bateaux.")
+           self.setup_phase()
+           self.display_boards("Flotte prête ! Attente de l'adversaire")
+
+
        game_running = True
-       last_status = "Connecté. Attente d'un adversaire..."
-       self.display_boards(last_status)
-
-
-       #Reste a faire la boucle de jeu principale
-       # Boucle du jeu principale
-       while game_running:
+       while game_running:       # Boucle du jeu principale
            try:
                msg = self.sock.recv(1024).decode('utf-8').strip()
-               if not msg: break
+               if not msg: 
+                   break
+
+               if self.is_spectator:
+                   for line in msg.split('\n'):
+                       line = line.strip()
+                       if not line:
+                           continue
+
+                       # Si le message indique un joueur qui joue
+                       if "Joueur" in line and "joue" in line:
+                           parts = line.split(":")
+                           joueur_info, coord_str = parts[0], parts[1].strip()
+                           joueur_num = int(joueur_info.split()[1])
+                           r, c = self.parse_coord(coord_str)
+                           self.last_shot = (joueur_num, r, c)
+
+                       # Si le message indique le résultat du tir
+                       elif line.startswith("Résultat"):
+                           result = line.split(":")[1].strip()
+                           if self.last_shot is None:
+                               continue
+                           joueur_num, r, c = self.last_shot
+
+                           # Mettre à jour la grille de l'observateur
+                           if joueur_num == 0:
+                               board = self.my_board
+                           else:
+                               board = self.tracking_board
+
+                           if result in ["TOUCHE", "GAME_OVER"]:
+                               board[r][c] = 'X'
+                           else:
+                               board[r][c] = 'O'
+
+                           self.display_boards(f"Joueur {joueur_num} a tiré {chr(r+65)}{c+1} : {result}")
+                           self.last_shot = None
+
+                   continue
+
+
 
                commands = msg.split('\n')
                for command in commands:
                    command = command.strip()
-                   if not command: continue
+                   if not command: 
+                       continue
 
                    if "Bienvenue" in command:
                        pass
@@ -236,7 +300,7 @@ class BattleshipClient:
                       
                        self.display_boards(last_status)
 
-           except KeyboardInterrpt:
+           except KeyboardInterrupt:
                break
            except Exception as e:
                print(f"Erreur : {e}")
@@ -258,3 +322,4 @@ if __name__ == "__main__":
           
    client = BattleshipClient(target_host)
    client.run()
+

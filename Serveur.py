@@ -25,7 +25,9 @@ def main():
        conn, addr = server_socket.accept()
        print(f"Connexion reçue de {addr}")
        clients.append(conn)
-       conn.send("Bienvenue! En attente de l'adversaire...\n".encode('utf-8'))
+       conn.send("Bienvenue sur le serveur de bataille navale !\n".encode('utf-8'))
+       conn.send("Vous êtes connecté. Placez vos bateaux pour commencer.\n".encode('utf-8'))
+       conn.send("En attente de l'adversaire...\n".encode('utf-8'))
 
    print("Deux joueurs connectés. Le jeu commence !")
   

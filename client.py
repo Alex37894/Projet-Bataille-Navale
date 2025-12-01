@@ -19,6 +19,7 @@ class BattleshipClient:
    def __init__(self, host):
        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
        self.host = host
+       self.is_spectator = False
       
        
        self.my_board = [['~' for _ in range(10)] for _ in range(10)] # Initialisation des grilles (10x10)
@@ -148,30 +149,45 @@ class BattleshipClient:
        self.display_boards("Flotte prête ! Tentative de connexion...")
 
    def run(self):       # debut de parti placement des bateaux
-       self.setup_phase()
 
        try: # gére la connexion au serveur avec l'adresse IP (variable : {self.host}) et le port (Variable :  {PORT})
            self.sock.connect((self.host, PORT))
+           last_status = "Connexion réussie au serveur !"
+           self.display_boards(last_status)
        except socket.error as e:
            print(f"\n{RED}ERREUR CRITIQUE : Impossible de joindre {self.host}:{PORT}{RESET}")
            print(f"Détail : {e}")
            sys.exit(1)
 
+       welcome = self.sock.recv(1024).decode("utf-8").strip()
+
+       if "observateur" in welcome.lower():
+           self.is_spectator = True
+           print("Connecté en tant qu'observateur.")
+       else:
+           self.is_spectator = False
+           self.display_boards("Connecté. Placez vos bateaux.")
+           self.setup_phase()
+           self.display_boards("Flotte prête ! Attente de l'adversaire")
+
+
        game_running = True
-       last_status = "Connecté. Attente d'un adversaire..."
-       self.display_boards(last_status)
-
-
-       # Boucle du jeu principale
-       while game_running:
+       while game_running:       # Boucle du jeu principale
            try:
                msg = self.sock.recv(1024).decode('utf-8').strip()
-               if not msg: break
+               if not msg: 
+                   break
+
+               if self.is_spectator:
+                for line in msg.split('\n'):
+                    print(line)
+                continue
 
                commands = msg.split('\n')
                for command in commands:
                    command = command.strip()
-                   if not command: continue
+                   if not command: 
+                       continue
 
                    if "Bienvenue" in command:
                        pass

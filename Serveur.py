@@ -1,7 +1,7 @@
 import socket
 import sys
 import threading
-import time  
+import time  # <--- AJOUT 1 : Nécessaire pour la pause
 
 HOST = '' 
 PORT = 5000

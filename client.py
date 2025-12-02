@@ -19,7 +19,7 @@ CYAN = "\033[36m"   # Interface
 MAGENTA = "\033[35m" # Robot
 
 class BattleshipClient:
-   def __init__(self, host=None): #si il n'y a pas nono ca veut dire qu'on est contre un bot donc il n'y a pas de socket 
+   def __init__(self, host=None): 
        self.host = host
        self.is_network_game = (host is not None)
        
@@ -30,15 +30,13 @@ class BattleshipClient:
 
        self.is_spectator = False
        
-       # Grilles du joueur
-       self.my_board = [['~' for _ in range(10)] for _ in range(10)] 
-       self.tracking_board = [['?' for _ in range(10)] for _ in range(10)] 
-       self.my_ships_points = set()
+       # Initialisation des variables
+       self.reset_game_data()
 
-       # bot
+       # bot (Données du robot)
        self.bot_board = [['~' for _ in range(10)] for _ in range(10)]
        self.bot_ships_points = set()
-       self.bot_shots_fired = set() # Fonction qui verifie si le robot ne tire pas 2 fois au meme endroit 
+       self.bot_shots_fired = set()
 
        # Liste des bateaux
        self.ships_to_place = [
@@ -48,6 +46,16 @@ class BattleshipClient:
            ("Sous-marin", 3),
            ("Torpilleur", 2)
        ]
+
+   def reset_game_data(self):
+       """Remet à zéro toutes les grilles pour une nouvelle manche."""
+       self.my_board = [['~' for _ in range(10)] for _ in range(10)] 
+       self.tracking_board = [['?' for _ in range(10)] for _ in range(10)] 
+       self.my_ships_points = set()
+       # Pour le mode bot
+       self.bot_shots_fired = set()
+       self.bot_board = [['~' for _ in range(10)] for _ in range(10)]
+       self.bot_ships_points = set()
 
    def clear_screen(self):
        os.system('clear')
@@ -129,6 +137,8 @@ class BattleshipClient:
 
    def setup_phase(self):
        """Boucle interactive pour placer tous les bateaux."""
+       # On ne fait plus de reset conditionnel ici, c'est géré avant l'appel
+           
        for name, size in self.ships_to_place:
            placed = False
            while not placed:
@@ -200,11 +210,12 @@ class BattleshipClient:
                return r, c, coord_str
 
    def run_solo(self):
-       self.setup_phase() # Joueur place ses bateaux
-       self.bot_setup_ships() # Robot place ses bateaux
+       self.reset_game_data() # Reset au début du solo
+       self.setup_phase() 
+       self.bot_setup_ships() 
        
        game_running = True
-       player_turn = True # Le joueur commence toujours contre le bot
+       player_turn = True 
        last_msg = "La partie commence contre le Robot !"
 
        while game_running:
@@ -225,7 +236,7 @@ class BattleshipClient:
                
                if (r, c) in self.bot_ships_points:
                    self.tracking_board[r][c] = 'X' 
-                   self.bot_ships_points.remove((r, c)) # On enlève le point de vie
+                   self.bot_ships_points.remove((r, c)) 
                    last_msg = f"Tir en {shot} : {GREEN}TOUCHÉ !{RESET}"
                    
                    if not self.bot_ships_points:
@@ -267,6 +278,7 @@ class BattleshipClient:
            print(f"Détail : {e}")
            sys.exit(1)
 
+       # FIX: Réception et vérification si PLACE_BATEAUX est collé au message de bienvenue
        welcome = self.sock.recv(1024).decode("utf-8").strip()
 
        if "observateur" in welcome.lower():
@@ -274,17 +286,23 @@ class BattleshipClient:
            print("Connecté en tant qu'observateur.")
        else:
            self.is_spectator = False
-           self.display_boards("Connecté. Placez vos bateaux.")
-           self.setup_phase()
-           self.display_boards("Flotte prête ! Attente de l'adversaire")
+           
+           if "PLACE_BATEAUX" in welcome:
+               self.reset_game_data() # Reset forcé
+               self.setup_phase()
+               self.display_boards("Flotte prête ! Attente de l'adversaire")
+           else:
+               self.display_boards("Connecté. En attente du serveur...")
 
-       game_running = True
-       while game_running:
+
+       # --- EXTENSION : BOUCLE INFINIE ---
+       while True:
            try:
                msg = self.sock.recv(1024).decode('utf-8').strip()
                if not msg: break
 
                if self.is_spectator:
+                   # (Logique spectateur inchangée)
                    pass 
 
                commands = msg.split('\n')
@@ -292,7 +310,18 @@ class BattleshipClient:
                    command = command.strip()
                    if not command: continue
 
-                   if "START" in command:
+                   # --- C'EST ICI LA CORRECTION IMPORTANTE ---
+                   if "PLACE_BATEAUX" in command:
+                       self.reset_game_data() # On remet TOUT à zéro
+                       self.setup_phase() # Lance le placement
+                       self.display_boards("Flotte prête ! Attente de l'adversaire")
+
+                   elif "START" in command:
+                       # Sécurité si on a raté l'ordre de placement (compatibilité)
+                       if not self.my_ships_points:
+                           self.reset_game_data() # Reset aussi ici par sécurité
+                           self.setup_phase()
+                           
                        last_status = "La partie commence !"
                        self.display_boards(last_status)
 
@@ -319,8 +348,8 @@ class BattleshipClient:
                            last_status = f"Tir en {shot} : {BLUE}Raté...{RESET}"
 
                        if "GAME_OVER" in res:
-                           last_status = f"{GREEN}VICTOIRE ! Vous avez gagné !{RESET}"
-                           game_running = False
+                           last_status = f"{GREEN}VICTOIRE ! Vous avez gagné la manche !{RESET}"
+                           
                        self.display_boards(last_status)
 
                    elif command == "WAIT":
@@ -340,7 +369,6 @@ class BattleshipClient:
                        self.sock.send(f"{response}\n".encode('utf-8'))
                        if response == "GAME_OVER":
                            last_status = f"{RED}DÉFAITE... Flotte détruite.{RESET}"
-                           game_running = False
                        elif response == "TOUCHE": last_status = f"Touché reçu en {opp_shot} !"
                        else: last_status = f"L'ennemi a raté en {opp_shot}."
                        self.display_boards(last_status)

@@ -42,6 +42,9 @@ def main():
     spectators = []
     history = [] # La liste qui garde les coups en mémoire
     boards_ready = {}
+    
+    # --- EXTENSION : SCORES ---
+    scores = [0, 0]
   
     while len(clients) < 2:
         conn, addr = server_socket.accept()
@@ -54,26 +57,6 @@ def main():
 
     print("Deux joueurs connectés. Le jeu commence !")
   
-    clients[0].send("START 0\n".encode('utf-8'))
-    clients[1].send("START 1\n".encode('utf-8'))
-
-    for conn in clients:
-        conn.send("FIN_PLACEMENT?\n".encode('utf-8'))
-
-    while not all(boards_ready.values()):
-        for conn in clients:
-            if not boards_ready[conn]:
-                try:
-                    data = conn.recv(1024).decode('utf-8').strip()
-                    if data == "PLACEMENT_OK":
-                        boards_ready[conn] = True
-                except:
-                    pass
-
-    # Partie démarrée
-    for i, c in enumerate(clients):
-        c.send(f"START {i}\n".encode('utf-8'))
-
     # Thread pour accepter les observateurs (avec l'argument history)
     def accept_spectators():
         while True:
@@ -82,48 +65,102 @@ def main():
             
     threading.Thread(target=accept_spectators, daemon=True).start()
 
-    current_player = 0
-    game_over = False
-
-    while not game_over:
-        opponent = (current_player + 1) % 2
-      
+    # --- EXTENSION : BOUCLE INFINIE POUR LES MANCHES ---
+    while True:
+        # Réinitialisation pour la nouvelle manche
+        for c in clients:
+            boards_ready[c] = False
+            
         try:
-            clients[current_player].send("YOUR_TURN\n".encode('utf-8'))
-            clients[opponent].send("WAIT\n".encode('utf-8'))
+            # On demande aux clients de placer les bateaux (Nouvelle manche)
+            for c in clients:
+                c.send("PLACE_BATEAUX\n".encode('utf-8'))
 
-            data = clients[current_player].recv(1024).decode('utf-8').strip()
-            print(f"Joueur {current_player} joue : {data}")
-          
-            if not data: break
+            clients[0].send("START 0\n".encode('utf-8'))
+            clients[1].send("START 1\n".encode('utf-8'))
 
-            clients[opponent].send(f"{data}\n".encode('utf-8'))
+            for conn in clients:
+                conn.send("FIN_PLACEMENT?\n".encode('utf-8'))
+        except BrokenPipeError:
+            print("Un joueur s'est déconnecté.")
+            sys.exit()
 
-            result_data = clients[opponent].recv(1024).decode('utf-8').strip()
-            print(f"Résultat du Joueur {opponent} : {result_data}")
+        while not all(boards_ready.values()):
+            for conn in clients:
+                if not boards_ready[conn]:
+                    try:
+                        conn.setblocking(0) # Non-bloquant pour éviter de coincer la boucle
+                        try:
+                            data = conn.recv(1024).decode('utf-8').strip()
+                            if "PLACEMENT_OK" in data:
+                                boards_ready[conn] = True
+                        except:
+                            pass
+                        conn.setblocking(1)
+                    except:
+                        pass
+            time.sleep(0.1)
 
-            clients[current_player].send(f"{result_data}\n".encode('utf-8'))
+        # Partie démarrée
+        for i, c in enumerate(clients):
+            try: c.send(f"START {i}\n".encode('utf-8'))
+            except: pass
 
-            # On enregistre les coups dans l'historique
-            history.append(f"Joueur {current_player} joue : {data}\n")
-            history.append(f"Résultat : {result_data}\n")
+        current_player = 0
+        game_over = False
 
-            for spectator in spectators:
-                try:
-                    spectator.send(f"Joueur {current_player} joue : {data}\n".encode('utf-8'))
-                    spectator.send(f"Résultat : {result_data}\n".encode('utf-8'))
-                except socket.error:
-                     spectators.remove(spectator)
+        while not game_over:
+            opponent = (current_player + 1) % 2
+        
+            try:
+                clients[current_player].send("YOUR_TURN\n".encode('utf-8'))
+                clients[opponent].send("WAIT\n".encode('utf-8'))
 
-            if "GAME_OVER" in result_data:
-                game_over = True
-                print(f"Le joueur {current_player} a gagné !")
-            else:
-                current_player = opponent
+                data = clients[current_player].recv(1024).decode('utf-8').strip()
+                print(f"Joueur {current_player} joue : {data}")
+            
+                if not data: 
+                    sys.exit()
 
-        except Exception as e:
-            print(f"Erreur de connexion : {e}")
-            break
+                clients[opponent].send(f"{data}\n".encode('utf-8'))
+
+                result_data = clients[opponent].recv(1024).decode('utf-8').strip()
+                print(f"Résultat du Joueur {opponent} : {result_data}")
+
+                clients[current_player].send(f"{result_data}\n".encode('utf-8'))
+
+                # On enregistre les coups dans l'historique
+                history.append(f"Joueur {current_player} joue : {data}\n")
+                history.append(f"Résultat : {result_data}\n")
+
+                for spectator in spectators:
+                    try:
+                        spectator.send(f"Joueur {current_player} joue : {data}\n".encode('utf-8'))
+                        spectator.send(f"Résultat : {result_data}\n".encode('utf-8'))
+                    except socket.error:
+                        spectators.remove(spectator)
+
+                if "GAME_OVER" in result_data:
+                    game_over = True
+                    # --- EXTENSION : Gestion du score et affichage ---
+                    scores[current_player] += 1
+                    msg_victoire = f"Le joueur {current_player} gagne la manche ! Score: {scores[0]}-{scores[1]}"
+                    print(msg_victoire)
+                    history.append(msg_victoire + "\n")
+                    
+                    # On envoie le score aux joueurs (via l'historique ou direct si tu veux modifier plus)
+                    # Ici on garde simple : on break pour recommencer la boucle
+                    break 
+                else:
+                    current_player = opponent
+
+            except Exception as e:
+                print(f"Erreur de connexion : {e}")
+                sys.exit()
+
+        print("Nouvelle manche dans 3 secondes...")
+        time.sleep(3)
+        # La boucle while True reprend ici (re-placement des bateaux)
 
     print("Fermeture du serveur.")
     for c in clients + spectators:

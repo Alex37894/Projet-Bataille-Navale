@@ -3,31 +3,44 @@
 import socket
 import sys
 import os
+import random
+import time
 
-DEFAULT_HOST = '127.0.0.1' #Adresse par default si on met rien ca la prend 
+DEFAULT_HOST = '127.0.0.1' 
 PORT = 5000
 
-# Couleurs des différente actions du jeu dans le terminal 
+# Couleurs
 RESET = "\033[0m"
 RED = "\033[31m"    # Touché
 BLUE = "\033[34m"   # Eau / Raté
 GREEN = "\033[32m"  # Bateau intact
 YELLOW = "\033[33m" # Texte informatif
 CYAN = "\033[36m"   # Interface
+MAGENTA = "\033[35m" # Robot
 
 class BattleshipClient:
-   def __init__(self, host):
-       self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+   def __init__(self, host=None): #si il n'y a pas nono ca veut dire qu'on est contre un bot donc il n'y a pas de socket 
        self.host = host
-       self.is_spectator = False
-      
+       self.is_network_game = (host is not None)
        
-       self.my_board = [['~' for _ in range(10)] for _ in range(10)] # Initialisation des grilles (10x10)
-       self.tracking_board = [['?' for _ in range(10)] for _ in range(10)] # Initialisation des grilles (10x10)
-      
+       if self.is_network_game:
+           self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+       else:
+           self.sock = None
+
+       self.is_spectator = False
+       
+       # Grilles du joueur
+       self.my_board = [['~' for _ in range(10)] for _ in range(10)] 
+       self.tracking_board = [['?' for _ in range(10)] for _ in range(10)] 
        self.my_ships_points = set()
-      
-       # Liste des bateaux à placer (Nom et Taille) si on veut on rajouter il suffit de rajouter une ligne 
+
+       # bot
+       self.bot_board = [['~' for _ in range(10)] for _ in range(10)]
+       self.bot_ships_points = set()
+       self.bot_shots_fired = set() # Fonction qui verifie si le robot ne tire pas 2 fois au meme endroit 
+
+       # Liste des bateaux
        self.ships_to_place = [
            ("Porte-avions", 5),
            ("Croiseur", 4),
@@ -37,45 +50,39 @@ class BattleshipClient:
        ]
 
    def clear_screen(self):
-       """Efface le terminal."""
-       os.system('cls' if os.name == 'nt' else 'clear')
+       os.system('clear')
 
    def display_boards(self, status_msg=""):
        """Affiche les deux grilles côte à côte."""
        self.clear_screen()
-       print(f"\n--- {CYAN}BATAILLE NAVALE RÉSEAU{RESET} ---")
-       print(f"Serveur : {self.host}")
+       mode_titre = "RÉSEAU" if self.is_network_game else "SOLO VS ROBOT"
+       print(f"\n--- {CYAN}BATAILLE NAVALE ({mode_titre}){RESET} ---")
+       if self.is_network_game:
+           print(f"Serveur : {self.host}")
        print(f"{YELLOW}Statut : {status_msg}{RESET}\n")
       
-       header = "   1 2 3 4 5 6 7 8 9 10"                          #Gère l'interface graphique (les numeros)
-       print(f"   MA FLOTTE (Défense)           RADAR (Attaque)")   #gère l'interface graphique
+       header = "   1 2 3 4 5 6 7 8 9 10"
+       print(f"   MA FLOTTE (Défense)           RADAR (Attaque)")
        print(f"{header}    {header}")
       
        rows_label = "ABCDEFGHIJ"
       
-       for i in range(10): # Construction ligne Ma flotte
-           row_left = f"{rows_label[i]} "
+       for i in range(10): 
+           row_left = f"{rows_label[i]} " # --- Ma flotte ---
            for cell in self.my_board[i]:
-               if cell == 'B': 
-                  char = f"{GREEN}#{RESET}"
-               elif cell == 'X': 
-                  char = f"{RED}X{RESET}"
-               elif cell == 'O': 
-                  char = f"{BLUE}O{RESET}"
-               else: 
-                  char = f"{BLUE}~{RESET}"
+               if cell == 'B': char = f"{GREEN}#{RESET}"
+               elif cell == 'X': char = f"{RED}X{RESET}"
+               elif cell == 'O': char = f"{BLUE}O{RESET}"
+               else: char = f"{BLUE}~{RESET}"
                row_left += f" {char}"
           
-           row_right = f"{rows_label[i]} "   # Construction ligne Radar
+           # --- Radar ---
+           row_right = f"{rows_label[i]} "
            for cell in self.tracking_board[i]:
-               if cell == 'X': 
-                  char = f"{RED}X{RESET}"
-               elif cell == 'O': 
-                  char = f"{BLUE}O{RESET}"
-               elif cell == '?': 
-                  char = "."
-               else: 
-                  char = " "
+               if cell == 'X': char = f"{RED}X{RESET}"
+               elif cell == 'O': char = f"{BLUE}O{RESET}"
+               elif cell == '?': char = "."
+               else: char = " "
                row_right += f" {char}"
           
            print(f"{row_left}       {row_right}")
@@ -94,11 +101,8 @@ class BattleshipClient:
            pass
        return None, None
 
+   # --- PLACEMENT DES BATEAUX DU JOUEUR ---
    def place_ship(self, start_coord, length, orientation):
-       """
-       Tente de placer un bateau.
-       Retourne True si réussi, False si impossible.
-       """
        r, c = self.parse_coord(start_coord)
        if r is None: return False
 
@@ -109,11 +113,9 @@ class BattleshipClient:
            else: # Vertical
                curr_r, curr_c = r + i, c
 
-           # test si un coup n'es pas jouer en dohors de la grille ?
            if not (0 <= curr_r < 10 and 0 <= curr_c < 10):
                return False
           
-           # test si il n'y a pas eu de colision 
            if self.my_board[curr_r][curr_c] == 'B':
                return False
           
@@ -146,17 +148,117 @@ class BattleshipClient:
                else:
                    input(f"{RED}Placement impossible ! Tapez Entrée...{RESET}")
       
-       self.display_boards("Flotte prête ! Tentative de connexion...")
+       # Si c'est un jeu réseau avec un autre joueur on prévient le serveur
+       if self.is_network_game:
+           self.display_boards("Flotte prête ! Tentative de connexion...")
+           try:
+              self.sock.send("PLACEMENT_OK\n".encode('utf-8'))
+           except:
+               print(f"{RED}Impossible d’envoyer le statut de placement au serveur.{RESET}")
 
-       try:
-          self.sock.send("PLACEMENT_OK\n".encode('utf-8'))
-       except:
-           print(f"{RED}Impossible d’envoyer le statut de placement au serveur.{RESET}")
+   # bot
+   def bot_setup_ships(self):
+       """placement des bateau"""
+       print(f"{MAGENTA}Le Robot place ses navires...{RESET}")
+       time.sleep(1) 
+       
+       for name, size in self.ships_to_place:
+           placed = False
+           while not placed:  # Choix aléatoire pour tirer 
+               r = random.randint(0, 9)
+               c = random.randint(0, 9)
+               ori = random.choice(['H', 'V'])
+               
+               # Verifie si l'endroit ou il veut tirer et valide (pas deja tirer) 
+               coords_to_occupy = []
+               possible = True
+               for i in range(size):
+                   if ori == "H": curr_r, curr_c = r, c + i
+                   else:          curr_r, curr_c = r + i, c
+                   
+                   # Verifie si on ne joue pas hors limites ou si il y a pas une collision
+                   if not (0 <= curr_r < 10 and 0 <= curr_c < 10) or \
+                      self.bot_board[curr_r][curr_c] == 'B':
+                       possible = False
+                       break
+                   coords_to_occupy.append((curr_r, curr_c))
+               
+               if possible:
+                   for (pr, pc) in coords_to_occupy:
+                       self.bot_board[pr][pc] = 'B'
+                       self.bot_ships_points.add((pr, pc))
+                   placed = True
 
+   def bot_play_turn(self):
+       """Le robot tire une case au hasard."""
+       while True:
+           r = random.randint(0, 9)
+           c = random.randint(0, 9)
+           if (r, c) not in self.bot_shots_fired:
+               self.bot_shots_fired.add((r, c))
+               coord_str = f"{chr(r+65)}{c+1}"
+               return r, c, coord_str
 
-   def run(self):       # debut de parti placement des bateaux
+   def run_solo(self):
+       self.setup_phase() # Joueur place ses bateaux
+       self.bot_setup_ships() # Robot place ses bateaux
+       
+       game_running = True
+       player_turn = True # Le joueur commence toujours contre le bot
+       last_msg = "La partie commence contre le Robot !"
 
-       try: # gére la connexion au serveur avec l'adresse IP (variable : {self.host}) et le port (Variable :  {PORT})
+       while game_running:
+           self.display_boards(last_msg)
+
+           if player_turn:
+               print(f"{GREEN}C'est à VOTRE TOUR !{RESET}")
+               shot = input("Coordonnées de tir (ex: B5) : ").strip().upper()
+               r, c = self.parse_coord(shot)
+
+               if r is None:
+                   last_msg = f"{RED}Coordonnée invalide.{RESET}"
+                   continue
+               
+               if self.tracking_board[r][c] != '?':
+                   last_msg = f"{YELLOW}Déjà visé ici !{RESET}"
+                   continue
+               
+               if (r, c) in self.bot_ships_points:
+                   self.tracking_board[r][c] = 'X' 
+                   self.bot_ships_points.remove((r, c)) # On enlève le point de vie
+                   last_msg = f"Tir en {shot} : {GREEN}TOUCHÉ !{RESET}"
+                   
+                   if not self.bot_ships_points:
+                       self.display_boards(f"{GREEN}VICTOIRE ! Vous avez coulée toute la flotte du Robot !{RESET}")
+                       print("\nBravo capitaine.")
+                       break
+               else:
+                   self.tracking_board[r][c] = 'O' 
+                   last_msg = f"Tir en {shot} : {BLUE}Dans l'eau...{RESET}"
+                   player_turn = False 
+                   
+           else:
+               self.display_boards(f"{MAGENTA}Le Robot vise...{RESET}")
+               time.sleep(1.5) 
+               
+               r, c, coord_str = self.bot_play_turn()
+               
+               if (r, c) in self.my_ships_points:
+                   self.my_board[r][c] = 'X'
+                   self.my_ships_points.remove((r, c))
+                   last_msg = f"{RED}Le Robot a TOUCHÉ en {coord_str} !{RESET}"
+                   if not self.my_ships_points:
+                       self.display_boards(f"{RED}DÉFAITE... Le Robot a détruit votre flotte.{RESET}")
+                       break
+               else:
+                   self.my_board[r][c] = 'O'
+                   last_msg = f"{BLUE}Le Robot a raté en {coord_str}.{RESET}"
+               
+               player_turn = True # au tour du joueur
+
+   def run_network(self):
+       """Logique du jeu en mode RÉSEAU (Code original)."""
+       try: 
            self.sock.connect((self.host, PORT))
            last_status = "Connexion réussie au serveur !"
            self.display_boards(last_status)
@@ -176,84 +278,37 @@ class BattleshipClient:
            self.setup_phase()
            self.display_boards("Flotte prête ! Attente de l'adversaire")
 
-
        game_running = True
-       while game_running:       # Boucle du jeu principale
+       while game_running:
            try:
                msg = self.sock.recv(1024).decode('utf-8').strip()
-               if not msg: 
-                   break
+               if not msg: break
 
                if self.is_spectator:
-                   for line in msg.split('\n'):
-                       line = line.strip()
-                       if not line:
-                           continue
-
-                       # Si le message indique un joueur qui joue
-                       if "Joueur" in line and "joue" in line:
-                           parts = line.split(":")
-                           joueur_info, coord_str = parts[0], parts[1].strip()
-                           joueur_num = int(joueur_info.split()[1])
-                           r, c = self.parse_coord(coord_str)
-                           self.last_shot = (joueur_num, r, c)
-
-                       # Si le message indique le résultat du tir
-                       elif line.startswith("Résultat"):
-                           result = line.split(":")[1].strip()
-                           if self.last_shot is None:
-                               continue
-                           joueur_num, r, c = self.last_shot
-
-                           # Mettre à jour la grille de l'observateur
-                           if joueur_num == 0:
-                               board = self.my_board
-                           else:
-                               board = self.tracking_board
-
-                           if result in ["TOUCHE", "GAME_OVER"]:
-                               board[r][c] = 'X'
-                           else:
-                               board[r][c] = 'O'
-
-                           self.display_boards(f"Joueur {joueur_num} a tiré {chr(r+65)}{c+1} : {result}")
-                           self.last_shot = None
-
-                   continue
-
-
+                   pass 
 
                commands = msg.split('\n')
                for command in commands:
                    command = command.strip()
-                   if not command: 
-                       continue
+                   if not command: continue
 
-                   if "Bienvenue" in command:
-                       pass
-                  
-                   elif "START" in command:
+                   if "START" in command:
                        last_status = "La partie commence !"
                        self.display_boards(last_status)
 
                    elif command == "YOUR_TURN":
                        last_status = "C'est à VOTRE TOUR !"
                        self.display_boards(last_status)
-                      
                        valid = False
                        while not valid:
                            shot = input("Coordonnées de tir (ex: B5) : ").strip().upper()
                            r, c = self.parse_coord(shot)
                            if r is not None:
-                               if self.tracking_board[r][c] == '?':
-                                   valid = True
-                               else:
-                                   print(f"{YELLOW}Déjà visé !{RESET}")
-                           else:
-                               print(f"{RED}Invalide.{RESET}")
+                               if self.tracking_board[r][c] == '?': valid = True
+                               else: print(f"{YELLOW}Déjà visé !{RESET}")
+                           else: print(f"{RED}Invalide.{RESET}")
 
                        self.sock.send(f"{shot}\n".encode('utf-8'))
-                      
                        res = self.sock.recv(1024).decode('utf-8').strip()
                       
                        if "TOUCHE" in res or "GAME_OVER" in res:
@@ -266,38 +321,28 @@ class BattleshipClient:
                        if "GAME_OVER" in res:
                            last_status = f"{GREEN}VICTOIRE ! Vous avez gagné !{RESET}"
                            game_running = False
-                      
                        self.display_boards(last_status)
 
                    elif command == "WAIT":
                        last_status = "L'adversaire vise..."
                        self.display_boards(last_status)
-                      
                        opp_shot = self.sock.recv(1024).decode('utf-8').strip()
                        r, c = self.parse_coord(opp_shot)
-                      
                        response = "RATE"
                        if r is not None:
                            if (r, c) in self.my_ships_points:
                                self.my_board[r][c] = 'X'
                                self.my_ships_points.remove((r, c))
-                               if not self.my_ships_points:
-                                   response = "GAME_OVER"
-                               else:
-                                   response = "TOUCHE"
-                           else:
-                               self.my_board[r][c] = 'O'
+                               if not self.my_ships_points: response = "GAME_OVER"
+                               else: response = "TOUCHE"
+                           else: self.my_board[r][c] = 'O'
                       
                        self.sock.send(f"{response}\n".encode('utf-8'))
-                      
                        if response == "GAME_OVER":
                            last_status = f"{RED}DÉFAITE... Flotte détruite.{RESET}"
                            game_running = False
-                       elif response == "TOUCHE":
-                           last_status = f"Touché reçu en {opp_shot} !"
-                       else:
-                           last_status = f"L'ennemi a raté en {opp_shot}."
-                      
+                       elif response == "TOUCHE": last_status = f"Touché reçu en {opp_shot} !"
+                       else: last_status = f"L'ennemi a raté en {opp_shot}."
                        self.display_boards(last_status)
 
            except KeyboardInterrupt:
@@ -305,21 +350,31 @@ class BattleshipClient:
            except Exception as e:
                print(f"Erreur : {e}")
                break
-      
        self.sock.close()
-       print("\nFin de partie.")
+       print("\nFin de partie Réseau.")
 
 if __name__ == "__main__":
-   target_host = DEFAULT_HOST     # si rien d'entrée ca prend la DEFAULT_HOST defini au debut
-   
-   if len(sys.argv) > 1: # verifie si une ip a était donnée en argument a l'exécution du script
-       target_host = sys.argv[1]
-   else:     # sinon demande une ip
+    print(f"--- BATAILLE NAVALE ---")
+    print("1. Joueur vs Joueur (Réseau)")
+    print("2. Joueur vs Robot (Solo)")
+    
+    choice = input("Votre choix (1 ou 2) : ").strip()
+    
+    if choice == "1":
        print(f"--- CONFIGURATION CLIENT ---")
-       user_input = input(f"Entrez l'IP du serveur (Entrée pour {DEFAULT_HOST}) : ").strip()
-       if user_input:
-           target_host = user_input
-          
-   client = BattleshipClient(target_host)
-   client.run()
-
+       target_host = DEFAULT_HOST
+       # Si argument en ligne de commande, prioritaire
+       if len(sys.argv) > 1:
+           target_host = sys.argv[1]
+       else:
+           user_input = input(f"Entrez l'IP du serveur (Entrée pour {DEFAULT_HOST}) : ").strip()
+           if user_input:
+               target_host = user_input
+               
+       client = BattleshipClient(host=target_host)
+       client.run_network()
+       
+    else:
+       # Mode solo : pas besoin d'IP
+       client = BattleshipClient(host=None)
+       client.run_solo()
